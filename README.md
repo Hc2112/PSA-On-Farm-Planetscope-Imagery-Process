@@ -11,8 +11,12 @@ A summary of Planetscope surface reflectance imagery (4 or 8 band) that's been a
 <i>product.count</i>: Integer. 1= only 4-band imagery available for the code. 2= both 4-band and 8-band imagery are available.<br>
 <i>date.range</i>: Integer. The date range for the acquired imagery for the code<br>
 <i>cover_planting</i>: Date. The planting date for the code. Planting dates were found to be the same between reps within respective field codes. If an NA value existed,
-the cover_planting date was defaulted to September 1 for that cover crop year.<br>
-<i> cc_termination_date</i>: Date. The cover crop termination date. Termination dates were found to be the same between reps within respective field codes. If an NA value existed, the cover_planting date was defaulted to September 1 for that cover crop year.<br>
+the cover_planting date was defaulted to September 1 for that cover crop year. The planting date for field code LHR was changed from 2021-09-14 to 2022-09-14.<br>
+<i>cc_termination_date</i>: Date. The cover crop termination date. Termination dates were found to be the same between reps within respective field codes. If an NA value existed, the cover_planting date was defaulted to June 1 for that cover crop year. The termination date for field code VSJ was changed from 2020-05-02 to 2021-05-02.<br>
+<i>date.range.fields</i>: Integer. The number of days between cover_planting and cc_termination_date<br>
+<i>treatment</i>: Character. C = ???????<br>
+<i>type</i>: Character. Corner??????<br>
+<
 
 
 <b>RESOURCES</b><br>
