@@ -27,4 +27,4 @@ the cover_planting date was defaulted to September 1 for that cover crop year. T
 
 <b>RESOURCES</b><br>
 Imagery: Planetscope imagery can be accessed from https://g-a69314.7ce1a.03c0.data.globus.org/Imagery/PSA%20Planet/ALL%20IMAGERY.zip<br><br>
-Field boundaries: boundaries used for Planet API orders can be accessed from https://g-a69314.7ce1a.03c0.data.globus.org/Imagery/PSA%20Planet/Planet%20Extractions/GIS%20Files%20for%20Orders%20-%20CONFIDENTIAL.zip
+Field boundaries: boundaries used for Planet API orders can be accessed from https://g-a69314.7ce1a.03c0.data.globus.org/Imagery/PSA%20Planet/Planet%20Extractions/GIS%20Files%20for%20Orders%20-%20CONFIDENTIAL.zip. These boundaries are different from the original boundaries from Biomass_polygon1.geojson in that they were split into their respective farm codes, buffered out by 30m, and reprojected to WGS84, EPSG 4326.
