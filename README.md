@@ -1,7 +1,7 @@
 # PSA-On-Farm-Planetscope-Imagery-Process
 Documented process for ordering, downloading, and processing Planet data extractions across the PSA network. <br><br>
 
-<b>psa_planet_orders_summary.csv<b><br>
+<b>psa_planet_orders_summary.csv</b><br>
 A summary of Planetscope surface reflectance imagery (4 or 8 band) that's been acquired for the On-Farm network. Below is its metadata description.<br><br>
 
 <i>code</i>: Character. Field boundary code<br>
