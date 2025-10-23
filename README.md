@@ -2,7 +2,7 @@
 Documented process for ordering, downloading, and processing Planet data extractions across the PSA network. <br><br>
 
 <b>psa_planet_orders_summary.csv</b><br>
-A summary of Planetscope surface reflectance imagery (4 or 8 band) that's been acquired for the On-Farm network. Below is its metadata description.<br><br>
+A summary of Planetscope surface reflectance imagery (4 or 8 band) that's been acquired for the On-Farm network. Metadata description below.<br><br>
 
 <i>code</i>: Character. Field boundary code<br>
 <i>count</i>: Integer. Count of unique imagery dates acquired for the code <br>
@@ -16,7 +16,13 @@ the cover_planting date was defaulted to September 1 for that cover crop year. T
 <i>date.range.fields</i>: Integer. The number of days between cover_planting and cc_termination_date<br>
 <i>treatment</i>: Character. C = ???????<br>
 <i>type</i>: Character. Corner??????<br>
-<
+<i>cc_harvest_date</i>: Date. The cover crop harvest date.<br>
+<i>cc_species</i>: Character. The cover crop species.<br>
+<i>date.range.diff</i>: Integer. The difference in days between date.range and date.range.fields.<br>
+<i>planting.min.diff</i>: Integer. The difference in days between cover_planting and date.min.<br>
+<i>term.max.diff</i>: Integer. The difference in days between cc_termination_date and date.max. <br>
+<i>Flagged</i>: Binary. 0= No apparent issues between imagery acquisition and agronomic data exist. 1= row needs review. There was either a difference greater than 7 days for either the planting.min.diff or term.max.diff column.
+
 
 
 <b>RESOURCES</b><br>
