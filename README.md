@@ -1,4 +1,4 @@
-# PSA-On-Farm-Planetscope-Imagery-Process
+<img width="65" height="21" alt="image" src="https://github.com/user-attachments/assets/25060a39-cc9d-46d1-83ff-757e5794c19b" /># PSA-On-Farm-Planetscope-Imagery-Process
 Documented process for ordering, downloading, and processing Planet data extractions across the PSA network. <br><br>
 
 <b>psa_planet_orders_summary.csv</b><br>
@@ -21,8 +21,21 @@ the cover_planting date was defaulted to September 1 for that cover crop year. T
 <i>date.range.diff</i>: Integer. The difference in days between date.range and date.range.fields.<br>
 <i>planting.min.diff</i>: Integer. The difference in days between cover_planting and date.min.<br>
 <i>term.max.diff</i>: Integer. The difference in days between cc_termination_date and date.max. <br>
-<i>Flagged</i>: Binary. 0= No apparent issues between imagery acquisition and agronomic data exist. 1= row needs review. There was either a difference greater than 7 days for either the planting.min.diff or term.max.diff column.
+<i>Flagged</i>: Binary. 0= No apparent issues between imagery acquisition and agronomic data exist. 1= row needs review. There was either a difference greater than 7 days for either the planting.min.diff or term.max.diff column.<br><br>
 
+<b>psa_planet_extractions_conf90_long</b><br>
+<code.rep> Character. Farm code and its replicate feature (1 or 2)<br>
+<name> Character. Scene name with appended 4-band or 8-band product designation and band name. <br>
+<value> Numberic. Median band value retained from extractions. Not to be used as the final value.<br>
+<scene> Character. Scene ID for a given sensor pass. <br>
+<sensor> Character. Sensor ID for a given satellite. <br>
+<Band> Band or index (e.g. NDVI) name. <br>
+<date> Date. Date of imagery. <br>
+<field.date> Character. code.rep with imagery date appended. Used to calculate mean values for dates with multiple scenes.<br>
+<bands> Character. 4 or 8 band product.<br>
+<Scene.Count> Integer. Count of scenes for a given date.<br>
+<MeanValue> Numeric. Mean value of median values for date with multiple values.<br>
+<MedianValue> Numeric. Final value that's to represent the code.rep.
 
 
 <b>RESOURCES</b><br>
