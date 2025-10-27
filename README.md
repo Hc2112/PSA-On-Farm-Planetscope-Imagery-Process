@@ -25,17 +25,17 @@ the cover_planting date was defaulted to September 1 for that cover crop year. T
 
 <b>psa_planet_extractions_conf90_long</b><br>
 <i>code.rep</i> Character. Farm code and its replicate feature (1 or 2)<br>
-<i>name</i> Character. Scene name with appended 4-band or 8-band product designation and band name. <br>
-<i>value</i> Numberic. Median band value retained from extractions. Not to be used as the final value.<br>
-<i>scene</i> Character. Scene ID for a given sensor pass. <br>
-<i>sensor</i> Character. Sensor ID for a given satellite. <br>
-<i>Band</i> Band or index (e.g. NDVI) name. <br>
-<i>date</i> Date. Date of imagery. <br>
-<i>field.date</i> Character. code.rep with imagery date appended. Used to calculate mean values for dates with multiple scenes.<br>
-<i>bands</i> Character. 4 or 8 band product.<br>
-<i>Scene.Count</i> Integer. Count of scenes for a given date.<br>
-<i>MeanValue</i> Numeric. Mean value of median values for date with multiple values.<br>
-<i>MedianValue</i> Numeric. Final value that's to represent the code.rep.
+<i>name</i>: Character. Scene name with appended 4-band or 8-band product designation and band name. <br>
+<i>value</i>: Numberic. Median band value retained from extractions. Not to be used as the final value.<br>
+<i>scene</i>: Character. Scene ID for a given sensor pass. <br>
+<i>sensor</i>: Character. Sensor ID for a given satellite. <br>
+<i>Band</i>: Band or index (e.g. NDVI) name. <br>
+<i>date</i>: Date. Date of imagery. <br>
+<i>field.date</i>: Character. code.rep with imagery date appended. Used to calculate mean values for dates with multiple scenes.<br>
+<i>bands</i>: Character. 4 or 8 band product.<br>
+<i>Scene.Count</i>: Integer. Count of scenes for a given date.<br>
+<i>MeanValue</i>: Numeric. Mean value of median values for date with multiple values.<br>
+<i>MedianValue</i>: Numeric. Final value that's to represent the code.rep.
 
 
 <b>RESOURCES</b><br>
