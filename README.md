@@ -34,7 +34,7 @@ the cover_planting date was defaulted to September 1 for that cover crop year. T
 <i>field.date</i> Character. code.rep with imagery date appended. Used to calculate mean values for dates with multiple scenes.<br>
 <i>bands</i> Character. 4 or 8 band product.<br>
 <i>Scene.Count</i> Integer. Count of scenes for a given date.<br>
-<i>MeanValue</i Numeric. Mean value of median values for date with multiple values.<br>
+<i>MeanValue</i> Numeric. Mean value of median values for date with multiple values.<br>
 <i>MedianValue</i> Numeric. Final value that's to represent the code.rep.
 
 
