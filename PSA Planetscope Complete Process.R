@@ -9,6 +9,13 @@ library(ggplot2);library(ggtext)
 ##FOR PSA ON-FARM FIELDS. 
 
 ##SETTING UP THE DATA--------------------------------------
+
+utm = read_sf(paste0(getwd(),'\\DATA\\',
+                     'World_UTM_Grid_1675933722188253977.geojson')) %>% 
+  mutate(
+    epsg = paste0('epsg:326',ZONE)
+  ) %>% select(epsg)
+
 fields = st_read(
   paste0(getwd(),'\\DATA\\Biomass_polygon1.geojson')) %>% 
   mutate(
@@ -18,7 +25,43 @@ fields = st_read(
     cover_planting = cover_planting %>% as.Date(),
     cc_termination_date = ifelse(code == 'VSJ', '2021-05-02',cc_termination_date %>% as.character()),
     cc_termination_date = cc_termination_date %>% as.Date()
-  )
+  ) %>% 
+  st_join(utm)
+
+df.utm.buff2 = data.frame()
+for(i in 1:length(fields$code)){
+  
+  field.utm = fields %>% 
+    dplyr::filter(code == fields$code[i]) %>% 
+    select(code,epsg)
+  
+  field.utm = field.utm %>% 
+    st_transform(field.utm$epsg[1] %>% as.character()) %>% 
+    st_buffer(dist= -2) %>% 
+    dplyr::filter(st_is_empty(geometry)==F) %>% 
+    st_drop_geometry() %>% 
+    distinct()
+  
+  df.utm.buff2 = rbind(df.utm.buff2,field.utm)
+};df.utm.buff2 <- df.utm.buff2 %>% distinct()
+
+df.utm.buff3 = data.frame()
+for(i in 1:length(fields$code)){
+  
+  field.utm = fields %>% 
+    dplyr::filter(code == fields$code[i]) %>% 
+    select(code,epsg)
+  
+  field.utm = field.utm %>% 
+    st_transform(field.utm$epsg[1] %>% as.character()) %>% 
+    st_buffer(dist= -3) %>% 
+    dplyr::filter(st_is_empty(geometry)==F) %>% 
+    st_drop_geometry() %>%
+    distinct()
+  
+  df.utm.buff3 = rbind(df.utm.buff3,field.utm)
+};df.utm.buff3 <- df.utm.buff3 %>% distinct()
+
 
 fields.df <- fields %>%
   st_drop_geometry() %>% 
@@ -1092,7 +1135,7 @@ for (i in 1:length(codes)){
     products.json = ifelse(row.count <2,
                            products.json.1 %>% unlist(),
                            products.json.2)
-     
+    
     order.date = today() %>% str_remove_all('-')
     
     product.order.name <- paste0(
@@ -1472,7 +1515,7 @@ pl.files <- list.files(
     ))
   ) %>% 
   dplyr::filter(season.na == 'FALSE') %>% 
-  dplyr::filter(!(duplicated(id))) %>% 
+  dplyr::filter(!(duplicated(id))) %>% ##duplicate scenes exist 
   dplyr::arrange(date)
 
 code.rep <- fields$code.rep %>% unique() %>% sort()
@@ -1599,31 +1642,33 @@ for (i in 1:length(seasons)){
 
 ##SAME LOOP BUT WITH -2m BUFFER--------------------------------
 
-pl.files.2mbuffer <- fields %>% 
-  st_transform('epsg:32617') %>% 
-  st_buffer(dist= -2) %>% 
-  dplyr::filter(st_is_empty(geometry)==F) %>% 
-  st_drop_geometry() %>% 
-  select(code) %>% 
-  distinct() %>% 
-  left_join(pl.files,by='code') %>% 
-  dplyr::arrange(date)
 
+
+# pl.files.2mbuffer <- fields %>% 
+#   st_transform('epsg:32617') %>% 
+#   st_buffer(dist= -2) %>% 
+#   dplyr::filter(st_is_empty(geometry)==F) %>% 
+#   st_drop_geometry() %>% 
+#   select(code) %>% 
+#   distinct() %>% 
+#   left_join(pl.files,by='code') %>% 
+#   dplyr::arrange(date)
 
 for (i in 1:length(seasons)){
   
-  files.raster = pl.files.2mbuffer %>% 
-    dplyr::filter(season == seasons[i])
+  field.initial = fields %>% 
+    dplyr::filter(code %in% df.utm.buff2$code &
+                    year == seasons[i]) %>% 
+    select(code,code.rep)
   
-  field = fields %>% 
-    st_transform('epsg:32617') %>% 
-    st_buffer(dist= -2) %>% 
-    dplyr::filter(st_is_empty(geometry)==F)
-  
-  pl.df = field %>% 
+  pl.df = field.initial %>% 
     st_drop_geometry() %>% 
-    dplyr::filter(year == seasons[i]) %>% 
-    select(code.rep)
+    select(code.rep) %>% 
+    dplyr::arrange(code.rep)
+  
+  files.raster = pl.files %>% 
+    dplyr::filter(season == seasons[i] &
+                    code %in% df.utm.buff2$code)
   
   for(j in 1:length(files.raster$file)){
     
@@ -1633,17 +1678,24 @@ for (i in 1:length(seasons)){
       print(paste("Loop", i,' of ',length(seasons),'seasons --',
                   j,' of ',length(files.raster$file),' rasters'))
       
-      raster.initial = terra::rast(files.raster$file[j]) 
-      crs.rast = paste0('epsg: ',crs(raster.initial,describe=T)[3])
+      raster = terra::rast(files.raster$file[j]) 
+      crs.rast = paste0('epsg: ',crs(raster,describe=T)[3])
       
-      field = fields %>% 
-        dplyr::filter(year == seasons[i])  %>%
+      field = field.initial %>% 
         st_transform(crs.rast) %>% 
-        st_buffer(dist= -2) %>% 
+        st_buffer(dist= -2) %>%
         dplyr::filter(st_is_empty(geometry)==F)
       
-      raster = raster.initial #%>% 
-      # terra::crop(field$geometry %>% vect())
+      code.rep.j = field$code.rep %>% 
+        as.data.frame() %>% 
+        rename('code.rep' = '.')
+      
+      field.na.geom = field.initial %>% 
+        st_transform(crs.rast) %>% 
+        st_buffer(dist= -2) %>% 
+        dplyr::filter(st_is_empty(geometry)==T) %>% 
+        st_drop_geometry() %>% 
+        select(code.rep)
       
       raster$NDVI = (raster$nir - raster$red)/(raster$nir + raster$red)
       
@@ -1710,7 +1762,20 @@ for (i in 1:length(seasons)){
         y= field,
         fun = 'median')
       
-      pl.df = cbind(pl.df,extracted)
+      pl.df.initial = cbind(code.rep.j,extracted)
+      
+      if(nrow(field.na.geom)<1){
+        pl.df = cbind(pl.df,extracted)
+      }else{
+        missing.cols = setdiff(names(pl.df.initial),
+                               names(field.na.geom))
+        for (col in missing.cols) {
+          field.na.geom[[col]] <- NA
+        }
+        pl.df.2 = rbind(pl.df.initial,field.na.geom) %>% 
+          dplyr::arrange(code.rep)
+        pl.df = cbind(pl.df,pl.df.2)
+      }
       
       gc()
       tmpFiles(remove = TRUE)
@@ -1727,36 +1792,133 @@ for (i in 1:length(seasons)){
     row.names = F)
   
 }
+# end.time = Sys.time()
+# total.time = (end.time - start.time)/60;total.time
+beepr::beep(8)
+
+##PREPARE DATA FOR LONG FORMAT---------------------------
+
+##read in outputs from extractions
+extraction.files <- list.files(
+  path = 'D:\\Projects\\Planet Orders - PSA\\Planet Orders - PSA\\OUTPUTS',
+  recursive = F,full.names = T,
+  pattern = '*conf90_[23mno]{2}buffer_[0-9]{4}') %>% 
+  as.data.frame() %>% 
+  rename('file' = '.') %>% 
+  mutate(
+    buffer = ifelse(str_detect(file,'nobuffer'),'NoBuffer','Y'),
+    buffer = ifelse(str_detect(file,'2m'),'2m',buffer),
+    buffer = ifelse(str_detect(file,'3m'),'3m',buffer)
+  )
+
+##Loop through extractions to to make row wise
+df.all = data.frame()
+for(i in 1:length(extraction.files$file)){
+  
+  df = read.csv(extraction.files$file[i])
+  
+  buffer = extraction.files$buffer[i]
+  
+  df.cols = dim(df)[2]
+  
+  df.long = pivot_longer(df,cols=c(2:df.cols)) %>% 
+    mutate(
+      name = str_remove(name,'median.x'), ##scene name with #/bands and band name
+      scene = str_remove(name,'_[48]{1}b_[:alpha:]{1,5}'),##scene id
+      sensor = str_extract(name,'[:alnum:]{4}_[48]{1}b'),##sensor id
+      sensor = str_remove(sensor,'_[48]{1}b'),
+      band = str_extract(name,'_[:alpha:]{1,5}$') %>% ##specific band or index
+        str_remove('_'),
+      date = str_extract(scene,'[0-9]{8}') %>% ymd(),##image acquisition date
+      bands = str_extract(name,'[48]{1}b'),## 4 or 8 band imagery
+      field.date = paste0(code.rep,'_',date),##used to calculate #/scenes per day by polygon feature
+      buffered = buffer ##no buffer, 2m, or 3m reverse buffer
+    ) %>% 
+    dplyr::filter(band == 'NDVI' | band == 'NDRE') %>% 
+    na.omit() ##omits NA band values that did not intersect with code.rep
+  ##as well as NDRE values not found in 4-band imagery.
+  ##there were multiple imagery files having the same scene name 
+  ##that were clipped to separate fields.
+  
+  df.band.table = df.long %>% 
+    select(field.date,bands) %>% 
+    table() %>% as.data.frame() %>% 
+    mutate(
+      bands = as.character(bands),
+      band8.detect = any(df.long$bands == "8b")
+    ) %>% 
+    dplyr::filter(!(bands =='4b' & band8.detect == 'TRUE')) %>% 
+    rename('band8.Freq' = 'Freq') %>% 
+    select(-bands,-band8.detect)
+  
+  
+  ##calculate #/ daily scenes per code-rep
+  date.count <- df.long$field.date %>% 
+    table() %>% 
+    as.data.frame() %>% 
+    dplyr::rename('field.date' = '.'
+                  ,'Scene.Count' = 'Freq')
+  
+  data <- df.long %>% 
+    left_join(date.count, by='field.date') %>%
+    left_join(df.band.table, by='field.date') %>% 
+    { 
+      if (!any(.$bands == '8b')) {
+        filter(., bands == '4b')
+      } else {
+        filter(., !(bands == '4b' & band8.Freq > 0))
+      }
+    } %>% 
+    group_by(field.date,band) %>%
+    mutate(
+      MeanValue = mean(value,na.rm=T) ##calculate mean of median values per day
+    ) %>%
+    ungroup() %>% 
+    mutate(
+      MedianValue = ifelse(Scene.Count<2,value,MeanValue) ##return MeanValue (of median values) if more than one scene on a given day, otherwise return the original median value
+    ) %>% 
+    na.omit() %>% 
+    rename('Band' = 'band')
+  
+  df.all = rbind(df.all,data)
+  
+  write.csv(pl.df,paste0(
+    'psa_planet_extractions_conf90_2mbuffer_',seasons[i],'.csv')
+    ,
+    row.names = F)
+  
+}
+
 
 
 ##SAME LOOP BUT WITH -3m BUFFER--------------------------------
 
-pl.files.3mbuffer <- fields %>% 
-  st_transform('epsg:32617') %>% 
-  st_buffer(dist= -3) %>% 
-  dplyr::filter(st_is_empty(geometry)==F) %>% 
-  st_drop_geometry() %>% 
-  select(code) %>% 
-  distinct() %>% 
-  left_join(pl.files,by='code') %>% 
-  dplyr::arrange(date)
+# pl.files.3mbuffer <- fields %>% 
+#   st_transform('epsg:32617') %>% 
+#   st_buffer(dist= -3) %>% 
+#   dplyr::filter(st_is_empty(geometry)==F) %>% 
+#   st_drop_geometry() %>% 
+#   select(code) %>% 
+#   distinct() %>% 
+#   left_join(pl.files,by='code') %>% 
+#   dplyr::arrange(date)
 
 
 for (i in 1:length(seasons)){
   
+  field.initial = fields %>% 
+    dplyr::filter(code %in% df.utm.buff3$code &
+                    year == seasons[i]) %>% 
+    select(code,code.rep)
   
-  files.raster = pl.files.3mbuffer %>% 
-    dplyr::filter(season == seasons[i])
-  
-  field = fields %>% 
-    st_transform('epsg:32617') %>% 
-    st_buffer(dist= -3) %>% 
-    dplyr::filter(st_is_empty(geometry)==F)
-  
-  pl.df = field %>% 
+  pl.df = field.initial %>% 
     st_drop_geometry() %>% 
-    dplyr::filter(year == seasons[i]) %>% 
-    select(code.rep)
+    select(code.rep) %>% 
+    dplyr::arrange(code.rep)
+  
+  files.raster = pl.files %>% 
+    dplyr::filter(season == seasons[i] &
+                    code %in% df.utm.buff3$code)
   
   for(j in 1:length(files.raster$file)){
     
@@ -1766,17 +1928,24 @@ for (i in 1:length(seasons)){
       print(paste("Loop", i,' of ',length(seasons),'seasons --',
                   j,' of ',length(files.raster$file),' rasters'))
       
-      raster.initial = terra::rast(files.raster$file[j]) 
-      crs.rast = paste0('epsg: ',crs(raster.initial,describe=T)[3])
+      raster = terra::rast(files.raster$file[j]) 
+      crs.rast = paste0('epsg: ',crs(raster,describe=T)[3])
       
-      field = fields %>% 
-        dplyr::filter(year == seasons[i])  %>%
+      field = field.initial %>% 
         st_transform(crs.rast) %>% 
-        st_buffer(dist= -3) %>% 
+        st_buffer(dist= -3) %>%
         dplyr::filter(st_is_empty(geometry)==F)
       
-      raster = raster.initial #%>% 
-      # terra::crop(field$geometry %>% vect())
+      code.rep.j = field$code.rep %>% 
+        as.data.frame() %>% 
+        rename('code.rep' = '.')
+      
+      field.na.geom = field.initial %>% 
+        st_transform(crs.rast) %>% 
+        st_buffer(dist= -3) %>% 
+        dplyr::filter(st_is_empty(geometry)==T) %>% 
+        st_drop_geometry() %>% 
+        select(code.rep)
       
       raster$NDVI = (raster$nir - raster$red)/(raster$nir + raster$red)
       
@@ -1843,7 +2012,20 @@ for (i in 1:length(seasons)){
         y= field,
         fun = 'median')
       
-      pl.df = cbind(pl.df,extracted)
+      pl.df.initial = cbind(code.rep.j,extracted)
+      
+      if(nrow(field.na.geom)<1){
+        pl.df = cbind(pl.df,extracted)
+      }else{
+        missing.cols = setdiff(names(pl.df.initial),
+                               names(field.na.geom))
+        for (col in missing.cols) {
+          field.na.geom[[col]] <- NA
+        }
+        pl.df.2 = rbind(pl.df.initial,field.na.geom) %>% 
+          dplyr::arrange(code.rep)
+        pl.df = cbind(pl.df,pl.df.2)
+      }
       
       gc()
       tmpFiles(remove = TRUE)
@@ -1930,7 +2112,13 @@ for(i in 1:length(extraction.files$file)){
   data <- df.long %>% 
     left_join(date.count, by='field.date') %>%
     left_join(df.band.table, by='field.date') %>% 
-    # dplyr::filter(!(bands == '4b' & band8.Freq >0)) %>% 
+    { 
+      if (!any(.$bands == '8b')) {
+        filter(., bands == '4b')
+      } else {
+        filter(., !(bands == '4b' & band8.Freq > 0))
+      }
+    } %>% 
     group_by(field.date,band) %>%
     mutate(
       MeanValue = mean(value,na.rm=T) ##calculate mean of median values per day
@@ -1945,12 +2133,19 @@ for(i in 1:length(extraction.files$file)){
   df.all = rbind(df.all,data)
 }
 gc()
-write.csv(df.all,'psa_planet_extractions_conf90_long.csv',row.names = F)
 
+df.all.2 <- df.all %>% 
+  select(code.rep,field.date,Band,date,bands,buffered,MedianValue) %>% 
+  mutate(
+    id = paste0(field.date,'_',Band,'_',bands,'_',buffered)
+  ) %>% 
+  dplyr::filter(!(duplicated(id)))
+
+write.csv(df.all.2,'psa_planet_extractions_conf90_long.csv',row.names = F)
 
 ##PEPARE DATA FOR WIST/WIDE FORMAT----------------------------
 
-df.all.fin <- df.all %>% 
+df.all.fin <- df.all.2 %>% 
   mutate(
     date = str_remove_all(date,'-') %>% ymd(),
     date.j = paste0(substr(
@@ -2017,3 +2212,104 @@ for(i in 1:length(seasons)){
 gc()
 # end.time = Sys.time()
 # total.time = (end.time - start.time)/60;total.time
+
+##PLOTTING--------------------------------------------------------------------
+
+library(ggplot2);library(ggtext)
+
+col1 <- '#C26A77'
+col2 <- '#60A899'
+
+field.id <- fields.df$code
+for(i in 1:length(field.id)){
+  print(paste("Loop  i at:", i))
+  
+  field.id.sub = df.all.2 %>% 
+    mutate(
+      code = str_extract(code.rep,'[A-Z]{3}'),
+      rep = str_extract(code.rep,'[12]{1}')
+    ) %>% 
+    dplyr::filter(code == field.id[i] & buffered =='3m') %>%
+    mutate(
+      date = date %>% as.Date
+    )
+  if(nrow(field.id.sub)<1)next
+  
+  agro = fields %>% 
+    st_drop_geometry() %>% 
+    dplyr::filter(code == field.id[i]) %>% 
+    select(code,rep,cover_planting,cc_termination_date,cc_species,
+           uncorrected_cc_dry_biomass_kg_ha,percent_n) %>% 
+    rename(
+      'Biomass kg/ha'  = 'uncorrected_cc_dry_biomass_kg_ha',
+      'N%' = 'percent_n'
+    ) %>% 
+    distinct() %>% 
+    mutate(
+      col.text = ifelse(rep == '1',col1,col2)
+    )
+  
+  agro$label <- paste0(
+    "Rep", agro$rep,
+    "\nSpecies: ", agro$cc_species,
+    "\nBiomass: ", agro$`Biomass kg/ha`, " kg/ha",
+    "\nNitrogen: ", agro$`N%`, " %"
+  )
+  
+  # Assign a y-position for each label (e.g., staggered near top)
+  # agro$y_pos <- seq(0.95, 0.7, length.out = nrow(agro))  # adjust spacing as needed
+  
+  agro$y_pos <- seq(ifelse(
+    (field.id.sub$MedianValue %>% first())>0.5,0.45,0.95),
+    ifelse((field.id.sub$MedianValue %>% first())>0.5,0.20,0.7), 
+    length.out = nrow(agro))  # adjust spacing as needed
+  
+  # Assign a common x-position (e.g., left side of plot)
+  agro$x_pos <- min(field.id.sub$date)  # small offset from left edge
+  
+  
+  p <- ggplot(field.id.sub, 
+              aes(x=date, y=MedianValue,
+                  linetype =  Band, color = rep))+
+    geom_point(alpha=0.6, size=2.5,
+               aes(shape = bands))+
+    scale_linetype_manual(values=c("dashed", "solid"))+
+    scale_color_manual(breaks=c('1', '2'),
+                       values=c(col1,col2))+
+    scale_shape_manual(values = c('4b' = 16,'8b' = 17))+
+    scale_y_continuous(limits = c(0,1),
+                       breaks=seq(0,1,by=.1))+
+    scale_x_date(date_breaks = '1 month')+
+    geom_line(aes(x=date, y=MedianValue)) +
+    geom_vline(xintercept = agro$cover_planting, color = "blue", linetype = "dashed") +
+    geom_vline(xintercept = agro$cc_termination_date, color = "red", linetype = "dotted") +
+    annotate("text", x = unique(agro$cover_planting), 
+             y = 0.99, label = "Planting", angle = 0, hjust = 0, color = "blue") +
+    annotate("text", x = unique(agro$cc_termination_date), 
+             y = 0.99, label = "Termination", angle = 0, hjust = 1, color = "red") +
+    geom_text(data = agro[,c(2,5:11)], aes(x = x_pos, y = y_pos, label = label),
+              hjust = 0, vjust = 1, size = 3.5, inherit.aes = FALSE)+
+    labs(x = "Date", y = "Median Value") +
+    ggtitle(paste0('Field ',
+                   unique(field.id.sub$code),', ',
+                   'n= ', length(field.id.sub$date %>% unique()),
+                   ', 3m Buffer'))+
+    theme_minimal()+
+    theme(plot.title = element_text(size=18, hjust=0.5, face = "bold"),
+          axis.text.x=element_text(size=15,angle = 45, hjust = 1),
+          axis.text.y=element_text(size=15),
+          axis.title.x=element_markdown(size=18),
+          axis.title.y = element_markdown(size=18),
+          axis.ticks.x.bottom = element_line(linewidth = 0.25,
+                                             colour = "grey80"),
+          axis.ticks.length.x.bottom = unit(.25, "cm"),
+          legend.title = element_text(size = 16),
+          legend.text= element_text(size = 15))
+  
+  ggsave(path = 
+           paste0(getwd(),'\\OUTPUTS\\PLOTS\\'),
+         filename = paste0(field.id.sub$code %>% unique(),'_ndvi_ndre_3mbuffer',
+                           '.png'),
+         plot = p, width=15, height = 8, bg= 'white')
+}
+
