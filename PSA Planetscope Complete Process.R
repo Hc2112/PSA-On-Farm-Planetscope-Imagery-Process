@@ -10,12 +10,14 @@ library(ggplot2);library(ggtext)
 
 ##SETTING UP THE DATA--------------------------------------
 
+##UTM projection data to be joined to PSA sites
 utm = read_sf(paste0(getwd(),'\\DATA\\',
                      'World_UTM_Grid_1675933722188253977.geojson')) %>% 
   mutate(
     epsg = paste0('epsg:326',ZONE)
   ) %>% select(epsg)
 
+##Field and agronomic data
 fields = st_read(
   paste0(getwd(),'\\DATA\\Biomass_polygon1.geojson')) %>% 
   mutate(
@@ -28,6 +30,66 @@ fields = st_read(
   ) %>% 
   st_join(utm)
 
+##Objective is to reproject and buffer each site individually, reproject to
+##geographic coordinates so that they can all be combined into the same SpatVector
+for(i in 1:length(seasons)){
+  
+  field.utm = fields %>% 
+    dplyr::filter(year == seasons[i]) %>% 
+    select(code,code.rep,epsg,year,cover_planting,
+           cc_termination_date) %>% 
+    rename('GlobalID' = 'code.rep') %>% 
+    na.omit()
+  
+  if(nrow(field.utm)<1)next
+  
+  geom <- st_sfc(crs = 4326)  ##geographic coordinates
+  class(geom) <- c("sfc_POLYGON", class(geom))
+
+  sf.union <- st_sf(
+    code = character(0),    
+    GlobalID = character(0),
+    epsg = character(0),
+    year = character(0),
+    cover_planting = Date(0),
+    cc_termination_date = Date(0),
+    geometry = geom
+  ) %>% 
+    terra::vect()
+  
+  
+  codes = field.utm$code %>% unique()
+  
+  for(j in 1:length(codes)){
+    
+    field.utm2 = field.utm %>%
+      dplyr::filter(code == codes[j]) %>% 
+      st_transform(field.utm$epsg[1] %>% as.character())
+
+    if(any(
+      !(str_detect(st_is_empty(field.utm2),
+                 'TRUE')))==F)next
+    
+    field.utm3 = field.utm2 %>% 
+      dplyr::filter(st_is_empty(geometry)==F) %>%
+      st_transform('epsg:4326') %>% 
+      terra::vect()
+    
+    if(nrow(field.utm3)<1)next
+
+    sf.union = rbind(sf.union,field.utm3)
+    tmpFiles(remove = TRUE)
+    
+  }
+  
+  terra::writeVector(sf.union,paste0(
+    'PSA_OnFarm_NoBuffer_',seasons[i],'.geojson'))
+}
+
+
+##Next two loops are for defining which farm codes to use when applying a reverse
+##buffer to the extractions. Some codes/replicates are excluded because buffering 
+##results in empty geometries.
 df.utm.buff2 = data.frame()
 for(i in 1:length(fields$code)){
   
@@ -39,7 +101,7 @@ for(i in 1:length(fields$code)){
     st_transform(field.utm$epsg[1] %>% as.character()) %>% 
     st_buffer(dist= -2) %>% 
     dplyr::filter(st_is_empty(geometry)==F) %>% 
-    st_drop_geometry() %>% 
+    st_drop_geometry() %>%
     distinct()
   
   df.utm.buff2 = rbind(df.utm.buff2,field.utm)
@@ -62,7 +124,8 @@ for(i in 1:length(fields$code)){
   df.utm.buff3 = rbind(df.utm.buff3,field.utm)
 };df.utm.buff3 <- df.utm.buff3 %>% distinct()
 
-
+##fields.df is a revision of the original PSA field data. This is used for ordering
+##since several farm codes had missing or wrong planting/termination dates.
 fields.df <- fields %>%
   st_drop_geometry() %>% 
   mutate(
@@ -86,6 +149,8 @@ fields.df <- fields %>%
          treatment,type,year,cc_harvest_date,cc_species) %>% 
   distinct()
 
+##Geographic data for PSA farms, broken into individual files by code and buffered
+##30m and reprojected to EPSG 4326.
 extent.files.main <- list.files(
   paste0(getwd(),'\\DATA'),
   pattern = '*.geojson$',full.names = T) %>% 
@@ -94,7 +159,7 @@ extent.files.main <- list.files(
          Code = str_remove(Code,'.geojson')) %>% 
   na.omit()
 
-##OPTION 1: IMAGERY ORDERS by single day----------------------------------------------
+##ORDERING OPTION 1: IMAGERY ORDERS by single day----------------------------------------------
 codes = fields.df %>% 
   dplyr::filter(order.id =='NA') %>%
   select(code) %>% as.vector() %>% unlist() %>% 
@@ -444,7 +509,7 @@ for (i in 1:length(codes)){
   
 }
 
-##OPTION 2: IMAGERY ORDERS by entire date range----------------------------------------------
+##ORDERING OPTION 2: IMAGERY ORDERS by entire date range----------------------------------------------
 codes = fields.df %>% 
   # dplyr::filter(order.id =='NA') %>%
   select(code) %>% as.vector() %>% unlist() %>% 
@@ -790,14 +855,8 @@ pl.m <- list.files(path= 'D:\\Projects\\Planet Orders - PSA\\Planet Orders - PSA
                    recursive = T, full.names = T,
                    pattern = '*metadata.json$')
 
-# pl.m = pl.m[1178:24611]
-# pl.m = pl.m[1181:23434]
-# pl.m = pl.m[871:22254]
-# pl.m = pl.m[3732:21384]
-# pl.m = pl.m[3677:17653]
-# pl.m = pl.m[9088:13977]
-
-#Loop through list of metadata files to create a dataframe
+##Loop through list of metadata files to create a dataframe. To be used
+##for further investigation if needed.
 meta.df <- data.frame()
 for (m in 1:length(pl.m)){
   print(paste("Loop m at:", m))
@@ -865,14 +924,6 @@ meta.df.fin <- meta.df %>%
     Date = str_extract(Date,'[0-9]{4}-[0-9]{2}-[0-9]{2}') %>% 
       as.Date()
   )
-##CHECK
-##Onfarm_CWZ/20220918_152304_38_2475_metadata.json
-##Onfarm_EJU/20230211_144800_78_241e_metadata.json
-##Onfarm_HAP/20230309_154420_96_2479_metadata.json
-##Onfarm_PHZ/20230506_144142_07_24a7_metadata.json
-##Onfarm_XFS/20220301_151308_80_2429_metadata.json
-##Onfarm_PHZ/20230506_144142_07_24a7_metadata.json
-##Onfarm_BRQ/20221123_161506_09_247f_3B_udm2_clip.tif
 
 ##SUMMARIZE DOWNLOADED DATA--------------------------------------
 pl.files.summary <- list.files(
@@ -1642,18 +1693,6 @@ for (i in 1:length(seasons)){
 
 ##SAME LOOP BUT WITH -2m BUFFER--------------------------------
 
-
-
-# pl.files.2mbuffer <- fields %>% 
-#   st_transform('epsg:32617') %>% 
-#   st_buffer(dist= -2) %>% 
-#   dplyr::filter(st_is_empty(geometry)==F) %>% 
-#   st_drop_geometry() %>% 
-#   select(code) %>% 
-#   distinct() %>% 
-#   left_join(pl.files,by='code') %>% 
-#   dplyr::arrange(date)
-
 for (i in 1:length(seasons)){
   
   field.initial = fields %>% 
@@ -1796,113 +1835,7 @@ for (i in 1:length(seasons)){
 # total.time = (end.time - start.time)/60;total.time
 beepr::beep(8)
 
-##PREPARE DATA FOR LONG FORMAT---------------------------
-
-##read in outputs from extractions
-extraction.files <- list.files(
-  path = 'D:\\Projects\\Planet Orders - PSA\\Planet Orders - PSA\\OUTPUTS',
-  recursive = F,full.names = T,
-  pattern = '*conf90_[23mno]{2}buffer_[0-9]{4}') %>% 
-  as.data.frame() %>% 
-  rename('file' = '.') %>% 
-  mutate(
-    buffer = ifelse(str_detect(file,'nobuffer'),'NoBuffer','Y'),
-    buffer = ifelse(str_detect(file,'2m'),'2m',buffer),
-    buffer = ifelse(str_detect(file,'3m'),'3m',buffer)
-  )
-
-##Loop through extractions to to make row wise
-df.all = data.frame()
-for(i in 1:length(extraction.files$file)){
-  
-  df = read.csv(extraction.files$file[i])
-  
-  buffer = extraction.files$buffer[i]
-  
-  df.cols = dim(df)[2]
-  
-  df.long = pivot_longer(df,cols=c(2:df.cols)) %>% 
-    mutate(
-      name = str_remove(name,'median.x'), ##scene name with #/bands and band name
-      scene = str_remove(name,'_[48]{1}b_[:alpha:]{1,5}'),##scene id
-      sensor = str_extract(name,'[:alnum:]{4}_[48]{1}b'),##sensor id
-      sensor = str_remove(sensor,'_[48]{1}b'),
-      band = str_extract(name,'_[:alpha:]{1,5}$') %>% ##specific band or index
-        str_remove('_'),
-      date = str_extract(scene,'[0-9]{8}') %>% ymd(),##image acquisition date
-      bands = str_extract(name,'[48]{1}b'),## 4 or 8 band imagery
-      field.date = paste0(code.rep,'_',date),##used to calculate #/scenes per day by polygon feature
-      buffered = buffer ##no buffer, 2m, or 3m reverse buffer
-    ) %>% 
-    dplyr::filter(band == 'NDVI' | band == 'NDRE') %>% 
-    na.omit() ##omits NA band values that did not intersect with code.rep
-  ##as well as NDRE values not found in 4-band imagery.
-  ##there were multiple imagery files having the same scene name 
-  ##that were clipped to separate fields.
-  
-  df.band.table = df.long %>% 
-    select(field.date,bands) %>% 
-    table() %>% as.data.frame() %>% 
-    mutate(
-      bands = as.character(bands),
-      band8.detect = any(df.long$bands == "8b")
-    ) %>% 
-    dplyr::filter(!(bands =='4b' & band8.detect == 'TRUE')) %>% 
-    rename('band8.Freq' = 'Freq') %>% 
-    select(-bands,-band8.detect)
-  
-  
-  ##calculate #/ daily scenes per code-rep
-  date.count <- df.long$field.date %>% 
-    table() %>% 
-    as.data.frame() %>% 
-    dplyr::rename('field.date' = '.'
-                  ,'Scene.Count' = 'Freq')
-  
-  data <- df.long %>% 
-    left_join(date.count, by='field.date') %>%
-    left_join(df.band.table, by='field.date') %>% 
-    { 
-      if (!any(.$bands == '8b')) {
-        filter(., bands == '4b')
-      } else {
-        filter(., !(bands == '4b' & band8.Freq > 0))
-      }
-    } %>% 
-    group_by(field.date,band) %>%
-    mutate(
-      MeanValue = mean(value,na.rm=T) ##calculate mean of median values per day
-    ) %>%
-    ungroup() %>% 
-    mutate(
-      MedianValue = ifelse(Scene.Count<2,value,MeanValue) ##return MeanValue (of median values) if more than one scene on a given day, otherwise return the original median value
-    ) %>% 
-    na.omit() %>% 
-    rename('Band' = 'band')
-  
-  df.all = rbind(df.all,data)
-  
-  write.csv(pl.df,paste0(
-    'psa_planet_extractions_conf90_2mbuffer_',seasons[i],'.csv')
-    ,
-    row.names = F)
-  
-}
-
-
-
 ##SAME LOOP BUT WITH -3m BUFFER--------------------------------
-
-# pl.files.3mbuffer <- fields %>% 
-#   st_transform('epsg:32617') %>% 
-#   st_buffer(dist= -3) %>% 
-#   dplyr::filter(st_is_empty(geometry)==F) %>% 
-#   st_drop_geometry() %>% 
-#   select(code) %>% 
-#   distinct() %>% 
-#   left_join(pl.files,by='code') %>% 
-#   dplyr::arrange(date)
-
 
 for (i in 1:length(seasons)){
   
@@ -2045,6 +1978,99 @@ for (i in 1:length(seasons)){
 # end.time = Sys.time()
 # total.time = (end.time - start.time)/60;total.time
 beepr::beep(8)
+
+##PREPARE DATA FOR LONG FORMAT---------------------------
+
+##read in outputs from extractions
+extraction.files <- list.files(
+  path = 'D:\\Projects\\Planet Orders - PSA\\Planet Orders - PSA\\OUTPUTS',
+  recursive = F,full.names = T,
+  pattern = '*conf90_[23mno]{2}buffer_[0-9]{4}') %>% 
+  as.data.frame() %>% 
+  rename('file' = '.') %>% 
+  mutate(
+    buffer = ifelse(str_detect(file,'nobuffer'),'NoBuffer','Y'),
+    buffer = ifelse(str_detect(file,'2m'),'2m',buffer),
+    buffer = ifelse(str_detect(file,'3m'),'3m',buffer)
+  )
+
+##Loop through extractions to to make row wise
+df.all = data.frame()
+for(i in 1:length(extraction.files$file)){
+  
+  df = read.csv(extraction.files$file[i])
+  
+  buffer = extraction.files$buffer[i]
+  
+  df.cols = dim(df)[2]
+  
+  df.long = pivot_longer(df,cols=c(2:df.cols)) %>% 
+    mutate(
+      name = str_remove(name,'median.x'), ##scene name with #/bands and band name
+      scene = str_remove(name,'_[48]{1}b_[:alpha:]{1,5}'),##scene id
+      sensor = str_extract(name,'[:alnum:]{4}_[48]{1}b'),##sensor id
+      sensor = str_remove(sensor,'_[48]{1}b'),
+      band = str_extract(name,'_[:alpha:]{1,5}$') %>% ##specific band or index
+        str_remove('_'),
+      date = str_extract(scene,'[0-9]{8}') %>% ymd(),##image acquisition date
+      bands = str_extract(name,'[48]{1}b'),## 4 or 8 band imagery
+      field.date = paste0(code.rep,'_',date),##used to calculate #/scenes per day by polygon feature
+      buffered = buffer ##no buffer, 2m, or 3m reverse buffer
+    ) %>% 
+    dplyr::filter(band == 'NDVI' | band == 'NDRE') %>% 
+    na.omit() ##omits NA band values that did not intersect with code.rep
+  ##as well as NDRE values not found in 4-band imagery.
+  ##there were multiple imagery files having the same scene name 
+  ##that were clipped to separate fields.
+  
+  df.band.table = df.long %>% 
+    select(field.date,bands) %>% 
+    table() %>% as.data.frame() %>% 
+    mutate(
+      bands = as.character(bands),
+      band8.detect = any(df.long$bands == "8b")
+    ) %>% 
+    dplyr::filter(!(bands =='4b' & band8.detect == 'TRUE')) %>% 
+    rename('band8.Freq' = 'Freq') %>% 
+    select(-bands,-band8.detect)
+  
+  
+  ##calculate #/ daily scenes per code-rep
+  date.count <- df.long$field.date %>% 
+    table() %>% 
+    as.data.frame() %>% 
+    dplyr::rename('field.date' = '.'
+                  ,'Scene.Count' = 'Freq')
+  
+  data <- df.long %>% 
+    left_join(date.count, by='field.date') %>%
+    left_join(df.band.table, by='field.date') %>% 
+    { 
+      if (!any(.$bands == '8b')) {
+        filter(., bands == '4b')
+      } else {
+        filter(., !(bands == '4b' & band8.Freq > 0))
+      }
+    } %>% 
+    group_by(field.date,band) %>%
+    mutate(
+      MeanValue = mean(value,na.rm=T) ##calculate mean of median values per day
+    ) %>%
+    ungroup() %>% 
+    mutate(
+      MedianValue = ifelse(Scene.Count<2,value,MeanValue) ##return MeanValue (of median values) if more than one scene on a given day, otherwise return the original median value
+    ) %>% 
+    na.omit() %>% 
+    rename('Band' = 'band')
+  
+  df.all = rbind(df.all,data)
+  
+  write.csv(pl.df,paste0(
+    'psa_planet_extractions_conf90_2mbuffer_',seasons[i],'.csv')
+    ,
+    row.names = F)
+  
+}
 
 ##PREPARE DATA FOR LONG FORMAT---------------------------
 
