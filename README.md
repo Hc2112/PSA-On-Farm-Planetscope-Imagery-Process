@@ -4,22 +4,6 @@ Documented process for ordering, downloading, and processing Planet data extract
 <b>psa_planet_orders_summary.csv</b><br>
 A summary of Planetscope surface reflectance imagery (4 or 8 band) that's been acquired for the On-Farm network. Metadata description below.<br><br>
 
-<b>planet_scenes_metadata.csv</b><br>
-A summary of downloaded Planetscope imagery metadata. <br><br>
-<i>code</i>: Character. Field boundary code<br>
-<i>id</i>: Character. Scene identification.<br>
-<i>instrument</i>: Character. PS2 = Dove Classic. PS2.SD = Dove-R SuperDove. PSB.SD = 3rd Generation, SuperDove including coastal blue band and bands interoperable with Sentinel-2 bands.<br>
-<i>Date</i>: Date. Date of imagery. <br>
-<i> satellite_id</i>: Character. Identification for satellite hardware.<br>
-<i>strip_id</i>: Character. Path ID for satellite on that given date.<br>
-<i>quality_category</i>: Character. Standard or Test. Images with quality category of Test are unreliable.<br>
-<i>clear_confidence_percent</i>: Integer. Confidence score for the entire scene being free from clouds, snow, shadow, haze, etc. This score does not apply to the just clipped portion, so a mask should be applied to the area of interest to determine if the clear_confidence_percent at the pixel level qualifies the image for use.<br>
-<i>clear_percent</i>: Integer. Percentage of the entire scene being free from clouds, snow, shadow, haze, etc. This percentage does not apply to the just clipped portion, so a mask should be applied to the area of interest to determine if the udm2's clear mask layer at the pixel level qualifies the image for use.<br>
-<i>sun_elevation</i>: The sun's elevation in relation to the satellite's location at the time of acquisition.<br>
-<i>sun_azimuth</i>: The sun's azimuth in relation to the satellite's location at the time of acquisition.<br>
-<i>view_angle</i>: Numeric. The satellite's angle of capture, measured in degrees from vertical nadir.<br><br>
-
-
 <i>code</i>: Character. Field boundary code<br>
 <i>count</i>: Integer. Count of unique imagery dates acquired for the code <br>
 <i>date.min</i>: Date. The earliest imagery date acquired for the code<br>
@@ -37,7 +21,23 @@ the cover_planting date was defaulted to September 1 for that cover crop year. T
 <i>date.range.diff</i>: Integer. The difference in days between date.range and date.range.fields.<br>
 <i>planting.min.diff</i>: Integer. The difference in days between cover_planting and date.min.<br>
 <i>term.max.diff</i>: Integer. The difference in days between cc_termination_date and date.max. <br>
-<i>Flagged</i>: Binary. 0= No apparent issues between imagery acquisition and agronomic data exist. 1= row needs review. There was either a difference greater than 7 days for either the planting.min.diff or term.max.diff column.<br><br>
+<i>Flagged</i>: Binary. 0= No apparent issues between available imagery  and agronomic data exist. 1= row needs review. There was either a difference greater than 10 days for for  planting.min.diff or term.max.diff, or the quotient of date.range.fields divided by count is greater than five days.<br><br>
+
+
+<b>planet_scenes_metadata.csv</b><br>
+A summary of downloaded Planetscope imagery metadata. <br><br>
+<i>code</i>: Character. Field boundary code<br>
+<i>id</i>: Character. Scene identification.<br>
+<i>instrument</i>: Character. PS2 = Dove Classic. PS2.SD = Dove-R SuperDove. PSB.SD = 3rd Generation, SuperDove including coastal blue band and bands interoperable with Sentinel-2 bands.<br>
+<i>Date</i>: Date. Date of imagery. <br>
+<i> satellite_id</i>: Character. Identification for satellite hardware.<br>
+<i>strip_id</i>: Character. Path ID for satellite on that given date.<br>
+<i>quality_category</i>: Character. Standard or Test. Images with quality category of Test are unreliable.<br>
+<i>clear_confidence_percent</i>: Integer. Confidence score for the entire scene being free from clouds, snow, shadow, haze, etc. This score does not apply to the just clipped portion, so a mask should be applied to the area of interest to determine if the clear_confidence_percent at the pixel level qualifies the image for use.<br>
+<i>clear_percent</i>: Integer. Percentage of the entire scene being free from clouds, snow, shadow, haze, etc. This percentage does not apply to the just clipped portion, so a mask should be applied to the area of interest to determine if the udm2's clear mask layer at the pixel level qualifies the image for use.<br>
+<i>sun_elevation</i>: The sun's elevation in relation to the satellite's location at the time of acquisition.<br>
+<i>sun_azimuth</i>: The sun's azimuth in relation to the satellite's location at the time of acquisition.<br>
+<i>view_angle</i>: Numeric. The satellite's angle of capture, measured in degrees from vertical nadir.<br><br>
 
 <b>psa_planet_extractions_conf90_long</b><br>
 <i>code.rep</i> Character. Farm code and its replicate feature (1 or 2)<br>
