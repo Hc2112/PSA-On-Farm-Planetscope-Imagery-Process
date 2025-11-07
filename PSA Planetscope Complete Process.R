@@ -30,6 +30,29 @@ fields = st_read(
   ) %>% 
   st_join(utm)
 
+fields.df <- fields %>%
+  st_drop_geometry() %>% 
+  mutate(
+    year = year %>% as.integer(),
+    cover_planting = cover_planting %>% as.Date(),
+    # cover_planting = is.na(cover_planting),
+    cover_planting = ifelse(is.na(cover_planting)==T,
+                            paste0(year-1,'-09-01'),
+                            cover_planting %>% as.character()),
+    cover_planting = ifelse(code == 'LHR','2022-09-14',cover_planting),
+    cover_planting = cover_planting %>% as.Date(),
+    cc_termination_date = ifelse(is.na(cc_termination_date)==T,
+                                 paste0(
+                                   year,'-06-01'),
+                                 cc_termination_date %>% as.character()),
+    cc_termination_date = ifelse(code == 'VSJ', '2021-05-02',cc_termination_date),
+    cc_termination_date = cc_termination_date %>% as.Date(),
+    date.range.fields = abs(cc_termination_date - cover_planting)
+  ) %>% 
+  select(code,cover_planting,cc_termination_date,date.range.fields,
+         treatment,type,year,cc_harvest_date,cc_species) %>% 
+  distinct()
+
 ##Objective is to reproject and buffer each site individually, reproject to
 ##geographic coordinates so that they can all be combined into the same SpatVector
 for(i in 1:length(seasons)){
@@ -1573,6 +1596,8 @@ code.rep <- fields$code.rep %>% unique() %>% sort()
 codes <- fields.df$code %>%unique() %>% sort()
 
 seasons <- fields.df$year %>% unique() %>% sort()
+
+
 ##EXTRACTION LOOP, NESTED BY BY COVER CROP YEAR THEN FIELDS BY THOSE YEARS--------------------------------
 start.time = Sys.time()
 # seasons = seasons[5]
@@ -1813,7 +1838,9 @@ for (i in 1:length(seasons)){
         }
         pl.df.2 = rbind(pl.df.initial,field.na.geom) %>% 
           dplyr::arrange(code.rep)
-        pl.df = cbind(pl.df,pl.df.2)
+        
+        pl.df.2.cols = dim(pl.df.2)[2]
+        pl.df = cbind(pl.df,pl.df.2[,c(2:pl.df.2.cols)])
       }
       
       gc()
@@ -1957,8 +1984,9 @@ for (i in 1:length(seasons)){
         }
         pl.df.2 = rbind(pl.df.initial,field.na.geom) %>% 
           dplyr::arrange(code.rep)
-        pl.df = cbind(pl.df,pl.df.2)
-      }
+        
+        pl.df.2.cols = dim(pl.df.2)[2]
+        pl.df = cbind(pl.df,pl.df.2[,c(2:pl.df.2.cols)])      }
       
       gc()
       tmpFiles(remove = TRUE)
@@ -1998,7 +2026,14 @@ extraction.files <- list.files(
 df.all = data.frame()
 for(i in 1:length(extraction.files$file)){
   
-  df = read.csv(extraction.files$file[i])
+  df = read.csv(extraction.files$file[i]);names(df)
+  df.names = names(df)
+  
+  if(any(str_detect(df.names,"code.rep.[0-9]{1,2}"))==T){
+    df = df[,-grep("code.rep.[0-9]{1,2}",names(df))]
+  }else{
+    df= df
+  }
   
   buffer = extraction.files$buffer[i]
   
@@ -2092,6 +2127,14 @@ df.all = data.frame()
 for(i in 1:length(extraction.files$file)){
   
   df = read.csv(extraction.files$file[i])
+  
+    df.names = names(df)
+  
+  if(any(str_detect(df.names,"code.rep.[0-9]{1,2}"))==T){
+    df = df[,-grep("code.rep.[0-9]{1,2}",names(df))]
+    }else{
+      df= df
+    }
   
   buffer = extraction.files$buffer[i]
   
