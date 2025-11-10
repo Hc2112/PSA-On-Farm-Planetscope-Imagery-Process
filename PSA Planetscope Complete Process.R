@@ -945,8 +945,10 @@ for (m in 1:length(pl.m)){
 meta.df.fin <- meta.df %>% 
   mutate(
     Date = str_extract(Date,'[0-9]{4}-[0-9]{2}-[0-9]{2}') %>% 
-      as.Date()
-  )
+      as.Date(),
+    id.code = paste0(id,'_',code)
+  ) %>% 
+  dplyr::filter(!duplicated(id.code))
 
 ##SUMMARIZE DOWNLOADED DATA--------------------------------------
 pl.files.summary <- list.files(
@@ -980,13 +982,13 @@ pl.files.summary <- list.files(
   left_join(fields.df,by='code') %>% 
   mutate(
     date.range.diff = abs(date.range-date.range.fields), ##compares imagery date range v. agronomic date range
-    planting.min.diff = (cover_planting - date.min), ##gap between planting and available imagery
+    planting.min.diff = (cover_planting - date.min), ##gap between planting and latest available imagery
+    plant.max.diff = (date.min - cover_planting), ##gap between planting and earliest available imagery
     term.max.diff = (cc_termination_date - date.max), ##gap between termination and available imagery
-    # Flagged = ifelse(
-    #   (pl.files.summary$date.range.fields / pl.files.summary$count)>3,'1','0'
-    # ),
     Flagged = ifelse(
-      term.max.diff > -10,'1','0'
+      (term.max.diff > -10) |
+        (plant.max.diff < -10)|
+        (pl.files.summary$date.range.fields / pl.files.summary$count)>5,'1','0'
     )
   )
 
@@ -1556,11 +1558,6 @@ for (zip_file in zip_files$file) {
 
 ##EXTRACTION SETUP: PLANET DATA BY FARM CODE AND REP---------------------------
 
-library(dplyr)
-library(terra)
-library(sf)
-library(exactextractr);library(stringr)
-
 ##identify which imagery files to read in
 
 pl.files <- list.files(
@@ -1570,8 +1567,8 @@ pl.files <- list.files(
   as.data.frame() %>% 
   rename('file' = '.') %>% 
   mutate(
-    code = str_extract(file,'Onfarm_[A-Z]{3}'),
-    code = str_remove(code,'Onfarm_'),
+    code = str_extract(file,'On[Ff]{1}arm_[A-Z]{3}'),
+    code = str_remove(code,'On[Ff]{1}arm_'),
     date = str_extract(file,'[0-9]{8}_[0-9]{6}'),
     date = str_remove(date,'_[0-9]{6}'),
     Date = paste0(str_sub(date,1,4),'-',
@@ -2100,119 +2097,21 @@ for(i in 1:length(extraction.files$file)){
   
   df.all = rbind(df.all,data)
   
-  write.csv(pl.df,paste0(
-    'psa_planet_extractions_conf90_2mbuffer_',seasons[i],'.csv')
+  write.csv(df.all,paste0(
+    'psa_planet_extractions_conf90_long.csv')
     ,
     row.names = F)
   
 }
 
-##PREPARE DATA FOR LONG FORMAT---------------------------
-
-##read in outputs from extractions
-extraction.files <- list.files(
-  path = 'D:\\Projects\\Planet Orders - PSA\\Planet Orders - PSA\\OUTPUTS',
-  recursive = F,full.names = T,
-  pattern = '*conf90_[23mno]{2}buffer_[0-9]{4}') %>% 
-  as.data.frame() %>% 
-  rename('file' = '.') %>% 
-  mutate(
-    buffer = ifelse(str_detect(file,'nobuffer'),'NoBuffer','Y'),
-    buffer = ifelse(str_detect(file,'2m'),'2m',buffer),
-    buffer = ifelse(str_detect(file,'3m'),'3m',buffer)
-  )
-
-##Loop through extractions to to make row wise
-df.all = data.frame()
-for(i in 1:length(extraction.files$file)){
-  
-  df = read.csv(extraction.files$file[i])
-  
-    df.names = names(df)
-  
-  if(any(str_detect(df.names,"code.rep.[0-9]{1,2}"))==T){
-    df = df[,-grep("code.rep.[0-9]{1,2}",names(df))]
-    }else{
-      df= df
-    }
-  
-  buffer = extraction.files$buffer[i]
-  
-  df.cols = dim(df)[2]
-  
-  df.long = pivot_longer(df,cols=c(2:df.cols)) %>% 
-    mutate(
-      name = str_remove(name,'median.x'), ##scene name with #/bands and band name
-      scene = str_remove(name,'_[48]{1}b_[:alpha:]{1,5}'),##scene id
-      sensor = str_extract(name,'[:alnum:]{4}_[48]{1}b'),##sensor id
-      sensor = str_remove(sensor,'_[48]{1}b'),
-      band = str_extract(name,'_[:alpha:]{1,5}$') %>% ##specific band or index
-        str_remove('_'),
-      date = str_extract(scene,'[0-9]{8}') %>% ymd(),##image acquisition date
-      bands = str_extract(name,'[48]{1}b'),## 4 or 8 band imagery
-      field.date = paste0(code.rep,'_',date),##used to calculate #/scenes per day by polygon feature
-      buffered = buffer ##no buffer, 2m, or 3m reverse buffer
-    ) %>% 
-    dplyr::filter(band == 'NDVI' | band == 'NDRE') %>% 
-    na.omit() ##omits NA band values that did not intersect with code.rep
-  ##as well as NDRE values not found in 4-band imagery.
-  ##there were multiple imagery files having the same scene name 
-  ##that were clipped to separate fields.
-  
-  df.band.table = df.long %>% 
-    select(field.date,bands) %>% 
-    table() %>% as.data.frame() %>% 
-    mutate(
-      bands = as.character(bands),
-      band8.detect = any(df.long$bands == "8b")
-    ) %>% 
-    dplyr::filter(!(bands =='4b' & band8.detect == 'TRUE')) %>% 
-    rename('band8.Freq' = 'Freq') %>% 
-    select(-bands,-band8.detect)
-  
-  
-  ##calculate #/ daily scenes per code-rep
-  date.count <- df.long$field.date %>% 
-    table() %>% 
-    as.data.frame() %>% 
-    dplyr::rename('field.date' = '.'
-                  ,'Scene.Count' = 'Freq')
-  
-  data <- df.long %>% 
-    left_join(date.count, by='field.date') %>%
-    left_join(df.band.table, by='field.date') %>% 
-    { 
-      if (!any(.$bands == '8b')) {
-        filter(., bands == '4b')
-      } else {
-        filter(., !(bands == '4b' & band8.Freq > 0))
-      }
-    } %>% 
-    group_by(field.date,band) %>%
-    mutate(
-      MeanValue = mean(value,na.rm=T) ##calculate mean of median values per day
-    ) %>%
-    ungroup() %>% 
-    mutate(
-      MedianValue = ifelse(Scene.Count<2,value,MeanValue) ##return MeanValue (of median values) if more than one scene on a given day, otherwise return the original median value
-    ) %>% 
-    na.omit() %>% 
-    rename('Band' = 'band')
-  
-  df.all = rbind(df.all,data)
-}
-gc()
-
-df.all.2 <- df.all %>% 
-  select(code.rep,field.date,Band,date,bands,buffered,MedianValue) %>% 
+df.all.2 <- df.all %>%
+  select(code.rep,field.date,Band,date,bands,buffered,MedianValue) %>%
   mutate(
     id = paste0(field.date,'_',Band,'_',bands,'_',buffered)
-  ) %>% 
+  ) %>%
   dplyr::filter(!(duplicated(id)))
 
-write.csv(df.all.2,'psa_planet_extractions_conf90_long.csv',row.names = F)
-
-##PEPARE DATA FOR WIST/WIDE FORMAT----------------------------
+##PREPARE DATA FOR WIST/WIDE FORMAT----------------------------
 
 df.all.fin <- df.all.2 %>% 
   mutate(
@@ -2298,7 +2197,7 @@ for(i in 1:length(field.id)){
       code = str_extract(code.rep,'[A-Z]{3}'),
       rep = str_extract(code.rep,'[12]{1}')
     ) %>% 
-    dplyr::filter(code == field.id[i] & buffered =='3m') %>%
+    dplyr::filter(code == field.id[i] & buffered =='NoBuffer') %>%
     mutate(
       date = date %>% as.Date
     )
@@ -2362,7 +2261,7 @@ for(i in 1:length(field.id)){
     ggtitle(paste0('Field ',
                    unique(field.id.sub$code),', ',
                    'n= ', length(field.id.sub$date %>% unique()),
-                   ', 3m Buffer'))+
+                   ', ',unique(field.id.sub$buffered)))+
     theme_minimal()+
     theme(plot.title = element_text(size=18, hjust=0.5, face = "bold"),
           axis.text.x=element_text(size=15,angle = 45, hjust = 1),
@@ -2377,8 +2276,8 @@ for(i in 1:length(field.id)){
   
   ggsave(path = 
            paste0(getwd(),'\\OUTPUTS\\PLOTS\\'),
-         filename = paste0(field.id.sub$code %>% unique(),'_ndvi_ndre_3mbuffer',
+         filename = paste0(field.id.sub$code %>% unique(),'_ndvi_ndre_',unique(field.id.sub$buffered),
                            '.png'),
          plot = p, width=15, height = 8, bg= 'white')
 }
-
+ 
