@@ -2107,15 +2107,7 @@ for(i in 1:length(extraction.files$file)){
 df.all.2 <- df.all %>%
   select(code.rep,field.date,Band,date,bands,buffered,MedianValue) %>%
   mutate(
-    id = paste0(field.date,'_',Band,'_',bands,'_',buffered)
-  ) %>%
-  dplyr::filter(!(duplicated(id)))
-
-##PREPARE DATA FOR WIST/WIDE FORMAT----------------------------
-
-df.all.fin <- df.all.2 %>% 
-  mutate(
-    date = str_remove_all(date,'-') %>% ymd(),
+    id = paste0(field.date,'_',Band,'_',bands,'_',buffered),
     date.j = paste0(substr(
       date %>% 
         str_remove_all('-'),1,4),yday(date)), ##Julian date
@@ -2130,7 +2122,31 @@ df.all.fin <- df.all.2 %>%
                       substr(date.j,1,4),
                       '00',
                       substr(date.j,5,5))
-                    ,date.j),
+                    ,date.j),  
+    id2 = paste0(code.rep,'_',date.j,'_',Band,'_',buffered) ##for pairing with WIST interpolations
+    ) %>%
+  dplyr::filter(!(duplicated(id)))
+
+##PREPARE DATA FOR WIST/WIDE FORMAT----------------------------
+
+df.all.fin <- df.all.2 %>% 
+  mutate(
+    date = str_remove_all(date,'-') %>% ymd(),
+    # date.j = paste0(substr(
+    #   date %>% 
+    #     str_remove_all('-'),1,4),yday(date)), ##Julian date
+    # date.j = ifelse(nchar(date.j) == '6', ##Format Julian dates to be YYYYXXX
+    #                 paste0(
+    #                   substr(date.j,1,4),
+    #                   '0',
+    #                   substr(date.j,5,6))
+    #                 ,date.j),
+    # date.j = ifelse(nchar(date.j) == '5',
+    #                 paste0(
+    #                   substr(date.j,1,4),
+    #                   '00',
+    #                   substr(date.j,5,5))
+    #                 ,date.j),
     Date = paste0('x',date.j), ##this will be used for the outputs
     season = ifelse(date < '2019-06-10','2019',NA), ##used for WIST loop
     season = ifelse(date >= '2019-08-01' & date < '2020-08-01','2020',season),
@@ -2181,6 +2197,48 @@ gc()
 # end.time = Sys.time()
 # total.time = (end.time - start.time)/60;total.time
 
+##READ IN WIST INTERPOLATIONS---------------------------------
+
+files.wist <- list.files(
+  path = 'D:\\Projects\\Planet Orders - PSA\\Planet Orders - PSA\\OUTPUTS\\WIST\\wist',
+  full.names = T
+)
+
+df.wist = data.frame()
+for(i in 1:length(files.wist)){
+  
+  file = read.csv(files.wist[i]) %>% 
+    rename('code.rep' = 'GlobalID')
+  
+  num.cols = dim(file)[2]
+  
+  file2 = file[,c(1,6:num.cols)] %>% 
+    pivot_longer(cols = c(6:num.cols-4)) %>% 
+    rename('WIST' = 'value') %>% 
+    left_join(file[,c(1:5)],by = 'code.rep') %>% 
+    mutate(
+      date.j = str_remove(name,'X'),
+      Band = str_extract(files.wist[i],'[NDVIRE]{4}'),
+      buffered =ifelse(str_detect(files.wist[i],'[2m]{2}')==T,
+                       '2m',NA),
+      buffered =ifelse(str_detect(files.wist[i],'[3m]{2}')==T,
+                       '3m',buffered),
+      buffered =ifelse(str_detect(files.wist[i],'Nobuffer')==T,
+                       'NoBuffer',buffered),
+      season = str_extract(files.wist[i],'[201239]{4}'),
+      wist.type = str_extract(files.wist[i],'WIST_[maxfirst]{3,5}'),
+      id2 = paste0(code.rep,'_',date.j,'_',Band,'_',buffered)
+    )
+  
+  df.wist =rbind(df.wist,file2)
+}
+##JOIN WIST INTERPOLATIONS------------------------------
+
+df.all.3 = df.all.2 %>% 
+  left_join(df.wist[c(3:7,12,13)],by='id2') %>% 
+  mutate(
+    WIST = ifelse(WIST > -9999,WIST,NA)
+  )
 ##PLOTTING--------------------------------------------------------------------
 
 library(ggplot2);library(ggtext)
@@ -2188,26 +2246,39 @@ library(ggplot2);library(ggtext)
 col1 <- '#C26A77'
 col2 <- '#60A899'
 
-field.id <- fields.df$code
+field.id <- df.all.3$code.rep %>% str_remove('_[12]{1}') %>% unique() %>% sort()
 for(i in 1:length(field.id)){
   print(paste("Loop  i at:", i))
   
-  field.id.sub = df.all.2 %>% 
+  field.id.sub = df.all.3 %>% 
     mutate(
       code = str_extract(code.rep,'[A-Z]{3}'),
       rep = str_extract(code.rep,'[12]{1}')
     ) %>% 
     dplyr::filter(code == field.id[i] & buffered =='NoBuffer') %>%
     mutate(
-      date = date %>% as.Date
-    )
+      date = date %>% as.Date,
+      termination2 = paste0(year(max(date)),'-01-01') %>% 
+        as.Date() + termination
+    ) %>% 
+    rename('WIST.Fit' = 'Band')
+  
+  termination.df = field.id.sub[,c(17,18)] %>% 
+    distinct()
+  
+  wist.type = field.id.sub$wist.type %>% table() %>% 
+    as.data.frame()
+  
+  field.id.sub = field.id.sub[,c(1:15,17:19)] %>% distinct()
+
+  
   if(nrow(field.id.sub)<1)next
   
   agro = fields %>% 
     st_drop_geometry() %>% 
     dplyr::filter(code == field.id[i]) %>% 
-    select(code,rep,cover_planting,cc_termination_date,cc_species,
-           uncorrected_cc_dry_biomass_kg_ha,percent_n) %>% 
+    select(code,rep,cover_planting,cc_termination_date,cc_harvest_date,
+           cc_species,uncorrected_cc_dry_biomass_kg_ha,percent_n) %>% 
     rename(
       'Biomass kg/ha'  = 'uncorrected_cc_dry_biomass_kg_ha',
       'N%' = 'percent_n'
@@ -2238,8 +2309,8 @@ for(i in 1:length(field.id)){
   
   p <- ggplot(field.id.sub, 
               aes(x=date, y=MedianValue,
-                  linetype =  Band, color = rep))+
-    geom_point(alpha=0.6, size=2.5,
+                  linetype =  WIST.Fit, group = rep))+
+    geom_point(alpha=0.6, size=2,
                aes(shape = bands))+
     scale_linetype_manual(values=c("dashed", "solid"))+
     scale_color_manual(breaks=c('1', '2'),
@@ -2248,14 +2319,26 @@ for(i in 1:length(field.id)){
     scale_y_continuous(limits = c(0,1),
                        breaks=seq(0,1,by=.1))+
     scale_x_date(date_breaks = '1 month')+
-    geom_line(aes(x=date, y=MedianValue)) +
-    geom_vline(xintercept = agro$cover_planting, color = "blue", linetype = "dashed") +
-    geom_vline(xintercept = agro$cc_termination_date, color = "red", linetype = "dotted") +
+    # geom_line(aes(x=date, y=MedianValue)) +
+    geom_line(aes(x=date, y=WIST),color='black')+
+    geom_vline(xintercept = unique(agro$cover_planting), color = "blue", linetype = "dashed") +
+    geom_vline(xintercept = unique(agro$cc_harvest_date), color = "green", linetype = "dashed") +
+    geom_vline(xintercept = termination.df$termination2, color = "maroon", linetype = "solid",
+               alpha = 0.6) +
+    geom_vline(xintercept = unique(agro$cc_termination_date), color = "red", linetype = "dashed") +
     annotate("text", x = unique(agro$cover_planting), 
-             y = 0.99, label = "Planting", angle = 0, hjust = 0, color = "blue") +
+             y = 0.99, label = "Reported \n Planting", angle = 0, hjust = 0, color = "blue") +
+    annotate("text", x = termination.df$termination2,
+             y = 0.85, label = termination.df$rep, angle = 0, 
+             hjust = 1, color = "maroon", size = 3) +
     annotate("text", x = unique(agro$cc_termination_date), 
-             y = 0.99, label = "Termination", angle = 0, hjust = 1, color = "red") +
-    geom_text(data = agro[,c(2,5:11)], aes(x = x_pos, y = y_pos, label = label),
+             y = 0.97, label = paste0("Reported \n",
+                                      ifelse(
+                                        unique(
+                                          (agro$cc_termination_date) == unique(agro$cc_harvest_date))==T,
+                                        'Termination \n & Harvest',
+                                        'Termination')), angle = 0, hjust = 1, color = "red") +
+    geom_text(data = agro[,c(2,6:12)], aes(x = x_pos, y = y_pos, label = label),
               hjust = 0, vjust = 1, size = 3.5, inherit.aes = FALSE)+
     labs(x = "Date", y = "Median Value") +
     ggtitle(paste0('Field ',
@@ -2275,9 +2358,141 @@ for(i in 1:length(field.id)){
           legend.text= element_text(size = 15))
   
   ggsave(path = 
-           paste0(getwd(),'\\OUTPUTS\\PLOTS\\'),
+           paste0(getwd(),'\\OUTPUTS\\PLOTS WIST\\'),
          filename = paste0(field.id.sub$code %>% unique(),'_ndvi_ndre_',unique(field.id.sub$buffered),
                            '.png'),
          plot = p, width=15, height = 8, bg= 'white')
 }
  
+
+##PLOTTING BY REP AND INDEX--------------------------------------------------------------------
+
+library(ggplot2);library(ggtext)
+
+col1 <- '#C26A77'
+col2 <- '#60A899'
+
+field.id <- df.all.3$code.rep %>% unique() %>% sort()
+for(i in 1:length(field.id)){
+  print(paste("Loop  i at:", i))
+  
+  field.id.sub = df.all.3 %>% 
+    # mutate(
+    #   code = str_extract(code.rep,'[A-Z]{3}'),
+    #   rep = str_extract(code.rep,'[12]{1}')
+    # ) %>% 
+    dplyr::filter(code.rep == field.id[i] & buffered =='NoBuffer') %>%
+    mutate(
+      date = date %>% as.Date,
+      termination2 = paste0(year(max(date)),'-01-01') %>% 
+        as.Date() + termination
+    ) %>% 
+    rename('WIST.Fit' = 'Band')
+  
+  termination.df = field.id.sub[,c(1,17)] %>% 
+    distinct()
+  
+  wist.type = field.id.sub$wist.type %>% table() %>% 
+    as.data.frame()
+  
+  # field.id.sub = field.id.sub[,c(1:15,17:19)] %>% distinct()
+  
+  
+  if(nrow(field.id.sub)<1)next
+  
+  agro = fields %>% 
+    st_drop_geometry() %>% 
+    dplyr::filter(code.rep == field.id[i]) %>% 
+    select(code,rep,cover_planting,cc_termination_date,cc_harvest_date,
+           cc_species,uncorrected_cc_dry_biomass_kg_ha,percent_n) %>% 
+    rename(
+      'Biomass kg/ha'  = 'uncorrected_cc_dry_biomass_kg_ha',
+      'N%' = 'percent_n'
+    ) %>% 
+    distinct() %>% 
+    mutate(
+      col.text = ifelse(rep == '1',col1,col2)
+    )
+  
+  agro$label <- paste0(
+    "Rep", agro$rep,
+    "\nSpecies: ", agro$cc_species,
+    "\nBiomass: ", agro$`Biomass kg/ha`, " kg/ha",
+    "\nNitrogen: ", agro$`N%`, " %"
+  )
+  
+  # Assign a y-position for each label (e.g., staggered near top)
+  # agro$y_pos <- seq(0.95, 0.7, length.out = nrow(agro))  # adjust spacing as needed
+  
+  agro$y_pos <- seq(ifelse(
+    (field.id.sub$MedianValue %>% first())>0.5,0.45,0.95),
+    ifelse((field.id.sub$MedianValue %>% first())>0.5,0.20,0.7), 
+    length.out = nrow(agro))  # adjust spacing as needed
+  
+  # Assign a common x-position (e.g., left side of plot)
+  agro$x_pos <- min(field.id.sub$date)  # small offset from left edge
+  
+  
+  p <- ggplot(field.id.sub, 
+              aes(x=date, y=MedianValue,
+                  linetype =  WIST.Fit))+
+    geom_point(alpha=0.3, size=3,
+               aes(shape = bands))+
+    scale_linetype_manual(values=c("dashed", "solid"))+
+    # scale_color_manual(breaks=c('1', '2'),
+    #                    values=c(col1,col2))+
+    scale_shape_manual(values = c('4b' = 16,'8b' = 17))+
+    scale_y_continuous(limits = c(0,1),
+                       breaks=seq(0,1,by=.1))+
+    scale_x_date(date_breaks = '1 month')+
+    # geom_line(aes(x=date, y=MedianValue)) +
+    geom_line(aes(x=date, y=WIST),color='black')+
+    geom_vline(xintercept = unique(agro$cover_planting), color = "blue", linetype = "solid") +
+    geom_vline(xintercept = unique(agro$cc_harvest_date),color = "green", linetype = "solid") +
+    geom_vline(xintercept = termination.df$termination2, color = "maroon", linetype = "dotted",
+               alpha = 0.6) +
+    geom_vline(xintercept = unique(agro$cc_termination_date), color = "red", linetype = "solid") +
+    annotate("text", x = unique(agro$cover_planting), 
+             y = 0.99, label = "Reported \n Planting", angle = 0, hjust = 0, color = "blue",
+             size=3) +
+    annotate("text", x = termination.df$termination2,
+             y = 0.2, label = 'Estimated \n Termination', angle = 0, 
+             hjust = -0.1, color = "maroon", size = 3) +
+    annotate("text", x = unique(agro$cc_termination_date), 
+             y = 0.97, label = paste0("Reported \n",
+                                      ifelse(
+                                        unique(
+                                          (agro$cc_termination_date) == unique(agro$cc_harvest_date))==T,
+                                        'Termination \n & Harvest',
+                                        'Termination')), angle = 0, 
+             hjust = -0.1, color = "red", size=3) +
+    annotate("text", x = unique(agro$cc_harvest_date),
+             y = 0.87, label = 'Reported \n Harvest', angle = 0, 
+             hjust = 0.25, color = "green", size = 3) +
+    geom_text(data = agro[,c(2,6:12)], aes(x = agro$x_pos+15, y = 0, label = label),
+              hjust = 0, vjust = 0, size = 4, inherit.aes = FALSE) +
+    labs(x = "Date", y = "Median Value") +
+    ggtitle(paste0('Field ',
+                   unique(field.id.sub$code.rep),', ',
+                   'n= ', length(field.id.sub$date %>% unique()),
+                   ', ',unique(field.id.sub$buffered))) +
+    theme_minimal()+
+    theme(plot.title = element_text(size=18, hjust=0.5, face = "bold"),
+          axis.text.x=element_text(size=15,angle = 45, hjust = 1),
+          axis.text.y=element_text(size=15),
+          axis.title.x=element_markdown(size=18),
+          axis.title.y = element_markdown(size=18),
+          axis.ticks.x.bottom = element_line(linewidth = 0.25,
+                                             colour = "grey80"),
+          axis.ticks.length.x.bottom = unit(.25, "cm"),
+          legend.title = element_text(size = 16),
+          legend.text= element_text(size = 15))
+  
+  
+  ggsave(path = 
+           paste0(getwd(),'\\OUTPUTS\\PLOTS WIST\\'),
+         filename = paste0(field.id.sub$code.rep %>% unique(),'_ndvi_ndre_',unique(field.id.sub$buffered),
+                           '.png'),
+         plot = p, width=15, height = 8, bg= 'white')
+}
+
