@@ -1,7 +1,11 @@
 <img width="65" height="21" alt="image" src="https://github.com/user-attachments/assets/25060a39-cc9d-46d1-83ff-757e5794c19b" /># PSA-On-Farm-Planetscope-Imagery-Process
 Documented process for ordering, downloading, and processing Planet data extractions across the PSA network. <br><br>
 
+The script for calling the Planet API requires an API key, which can be found under the user's Planet account profile under "My Settings". Anyone can create a Planet account, but to have download access to Planetscope 8-band imagery one must apply to the Commercial Satellite Data Acquisition (CSDA) program. The quota for CSDA accounts is 5,000,000 km2 per user.
+
+Planet requires that areas-of-interest (AOIs) be projected in geographic coordinates (EPSG: 4326) and contain no more than 1,500 vertices. AOIs can be in .shp or .geojson file format, but must not contain multi-polyons. Ensure that your AOI is dissolved into one polygon and constrained to your feature(s) of interest in order to maximize on your Planet quota. Another factor that may prevent an order from executing is an AOI's topology. If such an error occurs, calling content(order.status)[['last_message']] will reveal where in the AOI the first error occurred. This can be an iterative process, so inspecting an AOI's topology using GIS software before attempting to place an order is recommended.
 <b>psa_planet_orders_summary.csv</b><br>
+
 A summary of Planetscope surface reflectance imagery (4 or 8 band) that's been acquired for the On-Farm network. Metadata description below.<br><br>
 
 <i>code</i>: Character. Field boundary code<br>
