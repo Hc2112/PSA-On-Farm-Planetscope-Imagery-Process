@@ -68,7 +68,7 @@ for(i in 1:length(seasons)){
   
   geom <- st_sfc(crs = 4326)  ##geographic coordinates
   class(geom) <- c("sfc_POLYGON", class(geom))
-
+  
   sf.union <- st_sf(
     code = character(0),    
     GlobalID = character(0),
@@ -88,10 +88,10 @@ for(i in 1:length(seasons)){
     field.utm2 = field.utm %>%
       dplyr::filter(code == codes[j]) %>% 
       st_transform(field.utm$epsg[1] %>% as.character())
-
+    
     if(any(
       !(str_detect(st_is_empty(field.utm2),
-                 'TRUE')))==F)next
+                   'TRUE')))==F)next
     
     field.utm3 = field.utm2 %>% 
       dplyr::filter(st_is_empty(geometry)==F) %>%
@@ -99,7 +99,7 @@ for(i in 1:length(seasons)){
       terra::vect()
     
     if(nrow(field.utm3)<1)next
-
+    
     sf.union = rbind(sf.union,field.utm3)
     tmpFiles(remove = TRUE)
     
@@ -948,6 +948,7 @@ meta.df.fin <- meta.df %>%
       as.Date(),
     id.code = paste0(id,'_',code)
   ) %>% 
+  dplyr::filter(clear_confidence_percent >= 90) %>%
   dplyr::filter(!duplicated(id.code))
 
 ##SUMMARIZE DOWNLOADED DATA--------------------------------------
@@ -1569,6 +1570,9 @@ pl.files <- list.files(
   mutate(
     code = str_extract(file,'On[Ff]{1}arm_[A-Z]{3}'),
     code = str_remove(code,'On[Ff]{1}arm_'),
+    scene = paste0(str_extract(
+      file,'[0-9]{8}_[0-9]{6}[_0-9]{0,3}_[:alnum:]{4}'),
+      '_',code),
     date = str_extract(file,'[0-9]{8}_[0-9]{6}'),
     date = str_remove(date,'_[0-9]{6}'),
     Date = paste0(str_sub(date,1,4),'-',
@@ -1587,7 +1591,8 @@ pl.files <- list.files(
   ) %>% 
   dplyr::filter(season.na == 'FALSE') %>% 
   dplyr::filter(!(duplicated(id))) %>% ##duplicate scenes exist 
-  dplyr::arrange(date)
+  dplyr::arrange(date) %>% 
+  dplyr::filter(scene %in% meta.df.fin$id.code)
 
 code.rep <- fields$code.rep %>% unique() %>% sort()
 codes <- fields.df$code %>%unique() %>% sort()
@@ -2124,7 +2129,7 @@ df.all.2 <- df.all %>%
                       substr(date.j,5,5))
                     ,date.j),  
     id2 = paste0(code.rep,'_',date.j,'_',Band,'_',buffered) ##for pairing with WIST interpolations
-    ) %>%
+  ) %>%
   dplyr::filter(!(duplicated(id)))
 
 ##PREPARE DATA FOR WIST/WIDE FORMAT----------------------------
@@ -2270,7 +2275,7 @@ for(i in 1:length(field.id)){
     as.data.frame()
   
   field.id.sub = field.id.sub[,c(1:15,17:19)] %>% distinct()
-
+  
   
   if(nrow(field.id.sub)<1)next
   
@@ -2363,7 +2368,7 @@ for(i in 1:length(field.id)){
                            '.png'),
          plot = p, width=15, height = 8, bg= 'white')
 }
- 
+
 
 ##PLOTTING BY REP AND INDEX--------------------------------------------------------------------
 
@@ -2384,8 +2389,8 @@ for(i in 1:length(field.id)){
     dplyr::filter(code.rep == field.id[i] & buffered =='NoBuffer') %>%
     mutate(
       date = date %>% as.Date,
-      termination2 = paste0(year(max(date)),'-01-01') %>% 
-        as.Date() + termination
+      termination2 = paste0(year(max(date)),'-01-01') #%>%
+      # as.Date() + termination
     ) %>% 
     rename('WIST.Fit' = 'Band')
   
@@ -2414,6 +2419,8 @@ for(i in 1:length(field.id)){
       col.text = ifelse(rep == '1',col1,col2)
     )
   
+  if((is.na(agro$cover_planting) | is.na(agro$cc_termination_date)) ==T)next
+  
   agro$label <- paste0(
     "Rep", agro$rep,
     "\nSpecies: ", agro$cc_species,
@@ -2435,12 +2442,12 @@ for(i in 1:length(field.id)){
   
   p <- ggplot(field.id.sub, 
               aes(x=date, y=MedianValue,
-                  linetype =  WIST.Fit))+
+                  linetype =  WIST.Fit, color = WIST.Fit))+
     geom_point(alpha=0.3, size=3,
                aes(shape = bands))+
     scale_linetype_manual(values=c("dashed", "solid"))+
-    # scale_color_manual(breaks=c('1', '2'),
-    #                    values=c(col1,col2))+
+    scale_color_manual(breaks=c('NDVI', 'NDRE'),
+                       values=c(col1,col2))+
     scale_shape_manual(values = c('4b' = 16,'8b' = 17))+
     scale_y_continuous(limits = c(0,1),
                        breaks=seq(0,1,by=.1))+
@@ -2449,15 +2456,15 @@ for(i in 1:length(field.id)){
     geom_line(aes(x=date, y=WIST),color='black')+
     geom_vline(xintercept = unique(agro$cover_planting), color = "blue", linetype = "solid") +
     geom_vline(xintercept = unique(agro$cc_harvest_date),color = "green", linetype = "solid") +
-    geom_vline(xintercept = termination.df$termination2, color = "maroon", linetype = "dotted",
-               alpha = 0.6) +
+    # geom_vline(xintercept = termination.df$termination2, color = "maroon", linetype = "dotted",
+    # alpha = 0.6) +
     geom_vline(xintercept = unique(agro$cc_termination_date), color = "red", linetype = "solid") +
     annotate("text", x = unique(agro$cover_planting), 
              y = 0.99, label = "Reported \n Planting", angle = 0, hjust = 0, color = "blue",
              size=3) +
-    annotate("text", x = termination.df$termination2,
-             y = 0.2, label = 'Estimated \n Termination', angle = 0, 
-             hjust = -0.1, color = "maroon", size = 3) +
+    # annotate("text", x = termination.df$termination2,
+    #          y = 0.2, label = 'Estimated \n Termination', angle = 0, 
+    #          hjust = -0.1, color = "maroon", size = 3) +
     annotate("text", x = unique(agro$cc_termination_date), 
              y = 0.97, label = paste0("Reported \n",
                                       ifelse(
